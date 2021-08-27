@@ -1,8 +1,11 @@
 [package]
-name = "irc-server"
+name = "irc-rust"
 version = "0.1.0"
+authors = ["Thomas Heslin <13917706+tjheslin1@users.noreply.github.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rustls = "0.19.1"
+webpki-roots = "0.22.0"
