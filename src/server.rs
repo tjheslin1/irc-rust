@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub struct Server {
     name: String,
+    // clients: Map<ClientIdentifier, Server>,
 }
 #[derive(Debug)]
 pub struct ServerCreationError {
