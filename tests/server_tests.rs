@@ -1,4 +1,4 @@
-use irc_server::server::Server;
+use irc_rust::server::Server;
 
 #[test]
 fn test_server_creation_name_too_long() {
