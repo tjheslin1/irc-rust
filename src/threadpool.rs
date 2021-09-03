@@ -48,6 +48,7 @@ impl Worker {
                     println!("Worker {} got a job; executing.", id);
 
                     job();
+                    println!("Worker {} finished job.", id);
                 }
                 Message::Terminate => {
                     println!("Worker {} was told to terminate.", id);

@@ -78,7 +78,6 @@ fn handle_connection(
                     return Err(e);
                 }
                 Ok(0) => {
-                    // write EOF?
                     println!("EOF ?");
                     return Ok(());
                 }
@@ -111,13 +110,17 @@ fn handle_connection(
 
                         server_connection.reader().read(&mut buf).unwrap();
 
+                        let request = String::from_utf8_lossy(&buf);
+                        let http_response =
+                            format!("HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}", request);
+
+                        println!("{}", http_response);
+
                         // echo
-                        // server_connection.writer().write_all(&buf).unwrap();
-
-                        // HTTP Hello
-                        let response = b"HTTP/1.0 200 OK\r\nConnection: close\r\n\r\nHello world from rustls IRC Server\r\n";
-
-                        server_connection.writer().write_all(response).unwrap();
+                        server_connection
+                            .writer()
+                            .write_all(http_response.as_bytes())
+                            .unwrap();
                         server_connection.send_close_notify()
                     }
                 }
