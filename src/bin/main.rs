@@ -30,9 +30,6 @@ fn main() {
         args => panic!("{}, got {}", CLI_ERROR, args.len() - 1),
     };
 
-    // let certs = vec![];
-    // let private_key = rustls::PrivateKey(vec![]);
-
     let rc_tls_config = Arc::new(
         rustls::ServerConfig::builder()
             .with_safe_default_cipher_suites()
@@ -40,7 +37,7 @@ fn main() {
             .with_safe_default_protocol_versions()
             .unwrap()
             .with_no_client_auth()
-            .with_single_cert(certs, private_key) // https://duckduckgo.com/?t=ffab&q=rust+tpclistener+AddrNotAvailable%2C+message%3A+%22Cannot+assign+requested+address&ia=web
+            .with_single_cert(certs, private_key)
             .expect("bad certificate/key"),
     );
 
@@ -64,8 +61,6 @@ fn handle_connection(
     println!("Connection started!");
 
     let mut server_connection = rustls::ServerConnection::new(rc_tls_config).unwrap();
-
-    // https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs#L213
 
     loop {
         if server_connection.wants_read() {
@@ -136,38 +131,9 @@ fn handle_connection(
             }
         }
     }
-
-    // let mut buf = String::new();
-    // let reader = server_connection.reader().read_to_string(&mut buf).unwrap();
-
-    // println!("{}", buf);
-
-    // let mut buffer = String::new();
-    // if let Err(x) = tls_stream.read_to_string(&mut buffer) {
-    //     println!("Err on read_to_string: {}\n{}", x, buffer);
-    //
-    //     return Err(x);
-    // }
-
-    // let contents = String::from("Hello, from IRC server!");
-
-    // let response = format!(
-    //     "{}\r\nContent-Length: {}\r\n\r\n{}",
-    //     "HTTP/1.1 200 OK",
-    //     contents.len(),
-    //     contents
-    // );
-
-    // println!("Responding with - Hello, from IRC server!");
-    // server_connection.write_tls(&mut tcp_stream).unwrap();
-    // tls_stream.write_all(b"Hello, from IRC server!").unwrap();
-    // tls_stream.write_all(response.as_bytes()).unwrap();
-    // tls_stream.write(b"GET / HTTP/1.1\r\nConnection: close\r\n\r\n");
-
-    // Ok(())
 }
 
-// https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs
+// from: https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs
 
 fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
     let certfile = fs::File::open(filename).expect("cannot open certificate file");
