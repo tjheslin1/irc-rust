@@ -1,12 +1,14 @@
+use rustls::Connection;
+use std::env;
 use std::fs;
 use std::io;
 use std::io::{BufReader, Read, Write};
 use std::net;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use irc_rust::threadpool::ThreadPool;
-use std::env;
+
+// https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs
 
 // https://github.com/nwtgck/hyper-rustls-example/blob/master/src/main.rs
 // https://stackoverflow.com/questions/60357636/how-do-i-make-a-tls-connection-using-the-rustls-library
@@ -14,6 +16,7 @@ use std::env;
 // certs:
 // https://stackoverflow.com/questions/61169422/implementing-https-server-using-rustls-with-hyper-in-rust
 // https://github.com/gpg/gnupg/blob/master/doc/howto-create-a-server-cert.texi
+// https://github.com/rustls/rustls/issues/397
 
 const CLI_ERROR: &str = "Expected two (2) arguments for certs path and private key path";
 
@@ -37,46 +40,113 @@ fn main() {
             .with_safe_default_protocol_versions()
             .unwrap()
             .with_no_client_auth()
-            .with_single_cert(certs, private_key)
+            .with_single_cert(certs, private_key) // https://duckduckgo.com/?t=ffab&q=rust+tpclistener+AddrNotAvailable%2C+message%3A+%22Cannot+assign+requested+address&ia=web
             .expect("bad certificate/key"),
     );
 
-    let server_connection = Arc::new(Mutex::new(
-        rustls::ServerConnection::new(rc_tls_config).unwrap(),
-    ));
-
-    let tcp_listener = net::TcpListener::bind("127.0.0.1:8084").unwrap(); // 6667
+    let tcp_listener = net::TcpListener::bind("192.168.0.110:8084").unwrap(); // 6667
     let thread_pool = ThreadPool::new(20).unwrap();
 
     tcp_listener.incoming().for_each(|stream| match stream {
         Ok(tcp_stream) => {
-            let arc_clone = Arc::clone(&server_connection);
+            let tls_config = Arc::clone(&rc_tls_config); // TODO: inline
 
-            thread_pool.execute(|| handle_connection(arc_clone, tcp_stream).unwrap())
+            thread_pool.execute(|| handle_connection(tls_config, tcp_stream).unwrap())
         }
-        Err(e) => panic!("Connection failed: {}", e),
+        Err(e) => println!("Connection failed: {}", e),
     })
 }
 
 fn handle_connection(
-    rc_connection: Arc<Mutex<rustls::ServerConnection>>,
+    rc_tls_config: Arc<rustls::ServerConfig>,
     mut tcp_stream: net::TcpStream,
 ) -> io::Result<()> {
-    let mut connection = rc_connection.lock().expect("Error obtaining lock.");
+    println!("Connection started!");
 
-    let mut tls_stream = rustls::Stream::new(&mut *connection, &mut tcp_stream);
+    let mut server_connection = rustls::ServerConnection::new(rc_tls_config).unwrap();
 
-    let mut buffer = String::new();
-    if let Err(x) = tls_stream.read_to_string(&mut buffer) {
-        println!("Err on read_to_string: {}\n{}", x, buffer);
+    // https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs#L213
 
-        return Err(x);
+    loop {
+        if server_connection.wants_read() {
+            match server_connection.read_tls(&mut tcp_stream) {
+                Err(e) => {
+                    println!("Err occurred: {:?}", e);
+
+                    if let io::ErrorKind::WouldBlock = e.kind() {
+                        println!("WouldBlock found!!");
+
+                        ()
+                    }
+
+                    println!("Error on read! {:?}", e);
+                    return Err(e);
+                }
+                Ok(0) => {
+                    // write EOF?
+                    println!("EOF ?");
+                    return Ok(());
+                }
+                Ok(_) => {
+                    println!("All is Ok");
+
+                    ()
+                }
+            }
+
+            match server_connection.process_new_packets() {
+                Err(e) => {
+                    println!("Cannot process packet!: {:?}", e);
+
+                    if let Err(write_err) = server_connection.write_tls(&mut tcp_stream) {
+                        println!("write failed {:?}", write_err);
+                        return Err(write_err);
+                    }
+                }
+                Ok(io) => {
+                    println!("{:?}", io);
+
+                    ()
+                }
+            }
+        }
+
+        if server_connection.wants_write() {
+            if let Err(write_err) = server_connection.write_tls(&mut tcp_stream) {
+                println!("write failed {:?}", write_err);
+                return Err(write_err);
+            }
+        }
     }
 
-    tls_stream.write_all("Bonjourno!".as_bytes()).unwrap();
+    // let mut buf = String::new();
+    // let reader = server_connection.reader().read_to_string(&mut buf).unwrap();
+
+    // println!("{}", buf);
+
+    // let mut buffer = String::new();
+    // if let Err(x) = tls_stream.read_to_string(&mut buffer) {
+    //     println!("Err on read_to_string: {}\n{}", x, buffer);
+    //
+    //     return Err(x);
+    // }
+
+    // let contents = String::from("Hello, from IRC server!");
+
+    // let response = format!(
+    //     "{}\r\nContent-Length: {}\r\n\r\n{}",
+    //     "HTTP/1.1 200 OK",
+    //     contents.len(),
+    //     contents
+    // );
+
+    // println!("Responding with - Hello, from IRC server!");
+    // server_connection.write_tls(&mut tcp_stream).unwrap();
+    // tls_stream.write_all(b"Hello, from IRC server!").unwrap();
+    // tls_stream.write_all(response.as_bytes()).unwrap();
     // tls_stream.write(b"GET / HTTP/1.1\r\nConnection: close\r\n\r\n");
 
-    Ok(())
+    // Ok(())
 }
 
 // https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs
