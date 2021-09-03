@@ -106,7 +106,25 @@ fn handle_connection(
                 Ok(io) => {
                     println!("{:?}", io);
 
-                    ()
+                    if io.peer_has_closed() {
+                        println!("Peer closed!");
+
+                        return Ok(());
+                    } else if io.plaintext_bytes_to_read() > 0 {
+                        let mut buf = Vec::new();
+                        buf.resize(io.plaintext_bytes_to_read(), 0u8);
+
+                        server_connection.reader().read(&mut buf).unwrap();
+
+                        // echo
+                        // server_connection.writer().write_all(&buf).unwrap();
+
+                        // HTTP Hello
+                        let response = b"HTTP/1.0 200 OK\r\nConnection: close\r\n\r\nHello world from rustls IRC Server\r\n";
+
+                        server_connection.writer().write_all(response).unwrap();
+                        server_connection.send_close_notify()
+                    }
                 }
             }
         }
