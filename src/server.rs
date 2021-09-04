@@ -23,4 +23,8 @@ impl Server {
             }),
         }
     }
+
+    pub fn pretty_print(&self) -> String {
+        format!("IRC Server: {}", self.name)
+    }
 }

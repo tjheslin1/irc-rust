@@ -6,6 +6,7 @@ use std::io::{BufReader, Read, Write};
 use std::net;
 use std::sync::Arc;
 
+use irc_rust::server::Server;
 use irc_rust::threadpool::ThreadPool;
 
 // https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs
@@ -44,17 +45,22 @@ fn main() {
     let tcp_listener = net::TcpListener::bind("192.168.0.110:8084").unwrap(); // 6667
     let thread_pool = ThreadPool::new(20).unwrap();
 
+    let rc_server =
+        Arc::new(Server::new("thomas-LabTop").expect("Error occurred creating Server!:"));
+
     tcp_listener.incoming().for_each(|stream| match stream {
         Ok(tcp_stream) => {
+            let server = Arc::clone(&rc_server);
             let tls_config = Arc::clone(&rc_tls_config); // TODO: inline
 
-            thread_pool.execute(|| handle_connection(tls_config, tcp_stream).unwrap())
+            thread_pool.execute(|| handle_connection(server, tls_config, tcp_stream).unwrap())
         }
         Err(e) => println!("Connection failed: {}", e),
     })
 }
 
-fn handle_connection(
+fn handle_connection<'a>(
+    server: Arc<Server>,
     rc_tls_config: Arc<rustls::ServerConfig>,
     mut tcp_stream: net::TcpStream,
 ) -> io::Result<()> {
@@ -109,10 +115,12 @@ fn handle_connection(
                         buf.resize(io.plaintext_bytes_to_read(), 0u8);
 
                         server_connection.reader().read(&mut buf).unwrap();
+                        let _request = String::from_utf8_lossy(&buf);
 
-                        let request = String::from_utf8_lossy(&buf);
-                        let http_response =
-                            format!("HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}", request);
+                        let http_response = format!(
+                            "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}",
+                            server.pretty_print()
+                        );
 
                         println!("{}", http_response);
 
