@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use irc_rust::server::Server;
 use irc_rust::threadpool::ThreadPool;
+use irc_rust::user::User;
 
 // https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs
 
@@ -59,15 +60,23 @@ fn main() {
     })
 }
 
-fn handle_connection<'a>(
-    server: Arc<Server>,
+fn handle_connection(
+    mut server: Arc<Server>,
     rc_tls_config: Arc<rustls::ServerConfig>,
     mut tcp_stream: net::TcpStream,
-) -> io::Result<()> {
+) -> Result<(), &'static str> {
+    // TODO: does this need to be static?
     println!("Connection started!");
 
     let mut server_connection = rustls::ServerConnection::new(rc_tls_config).unwrap();
 
+    fn report_err(mut server_conn: &rustls::ServerConnection, message: &str) {
+        server_conn.writer().write_all(message.as_bytes()).unwrap();
+        server_conn.send_close_notify()
+    }
+
+    // replace with: ?
+    // server_connection.complete_io(io)
     loop {
         if server_connection.wants_read() {
             match server_connection.read_tls(&mut tcp_stream) {
@@ -80,8 +89,7 @@ fn handle_connection<'a>(
                         ()
                     }
 
-                    println!("Error on read! {:?}", e);
-                    return Err(e);
+                    return Err(&format!("Error on read! {:?}", e)[..]);
                 }
                 Ok(0) => {
                     println!("EOF ?");
@@ -99,8 +107,7 @@ fn handle_connection<'a>(
                     println!("Cannot process packet!: {:?}", e);
 
                     if let Err(write_err) = server_connection.write_tls(&mut tcp_stream) {
-                        println!("write failed {:?}", write_err);
-                        return Err(write_err);
+                        return Err(&format!("write failed {:?}", write_err)[..]);
                     }
                 }
                 Ok(io) => {
@@ -115,16 +122,27 @@ fn handle_connection<'a>(
                         buf.resize(io.plaintext_bytes_to_read(), 0u8);
 
                         server_connection.reader().read(&mut buf).unwrap();
-                        let _request = String::from_utf8_lossy(&buf);
+                        let request = String::from_utf8_lossy(&buf);
+
+                        match request.split("\r\n").collect::<Vec<&str>>().first() {
+                            Some(nickname) => match User::new(nickname) {
+                                Ok(created_user) => server.add_user(created_user),
+                                Err(e) => {
+                                    report_err(&server_connection, &e[..]);
+
+                                    return Err(&e[..]);
+                                }
+                            },
+                            None => return Err("Invalid message format!"),
+                        }
 
                         let http_response = format!(
-                            "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}",
+                            "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}\r\n",
                             server.pretty_print()
                         );
 
                         println!("{}", http_response);
 
-                        // echo
                         server_connection
                             .writer()
                             .write_all(http_response.as_bytes())
