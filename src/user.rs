@@ -7,9 +7,12 @@ pub struct User {
 
 impl User {
     pub fn new(nickname: &str) -> Result<User, String> {
-        Ok(User {
-            nickname: nickname.to_string(),
-        })
+        match nickname {
+            "" => Err("User's nickname cannot be empty".to_string()),
+            name => Ok(User {
+                nickname: name.to_string(),
+            }),
+        }
     }
 }
 
