@@ -1,3 +1,3 @@
-pub mod server;
+pub mod irc_server;
 pub mod threadpool;
 pub mod user;

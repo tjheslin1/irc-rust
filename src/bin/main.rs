@@ -6,7 +6,7 @@ use std::io::{BufReader, Read, Write};
 use std::net;
 use std::sync::{Arc, Mutex};
 
-use irc_rust::server::Server;
+use irc_rust::irc_server::IRCServer;
 use irc_rust::threadpool::ThreadPool;
 use irc_rust::user::User;
 
@@ -47,7 +47,7 @@ fn main() {
     let thread_pool = ThreadPool::new(20).unwrap();
 
     let rc_server = Arc::new(Mutex::new(
-        Server::new("thomas-LabTop").expect("Error occurred creating Server!:"),
+        IRCServer::new("thomas-LabTop").expect("Error occurred creating Server!:"),
     ));
 
     tcp_listener.incoming().for_each(|stream| match stream {
@@ -62,11 +62,10 @@ fn main() {
 }
 
 fn handle_connection<'a>(
-    rc_server: Arc<Mutex<Server>>,
+    rc_server: Arc<Mutex<IRCServer>>,
     rc_tls_config: Arc<rustls::ServerConfig>,
     mut tcp_stream: net::TcpStream,
 ) -> Result<(), String> {
-    // TODO: does this need to be static?
     println!("Connection started!");
 
     let mut server_connection = rustls::ServerConnection::new(rc_tls_config).unwrap();
@@ -121,37 +120,19 @@ fn handle_connection<'a>(
                         buf.resize(io.plaintext_bytes_to_read(), 0u8);
 
                         server_connection.reader().read(&mut buf).unwrap();
-                        let request = String::from_utf8_lossy(&buf);
 
-                        match request.split("\r\n").collect::<Vec<&str>>().first() {
-                            Some(nickname) => match User::new(nickname) {
-                                Ok(created_user) => {
-                                    let mut server =
-                                        rc_server.lock().expect("Error obtaining lock.");
+                        match handle_request(Arc::clone(&rc_server), &buf) {
+                            Err(e) => report_err(&mut server_connection, &e[..]),
+                            Ok(response) => {
+                                println!("{}", response);
 
-                                    server.add_user(created_user)
-                                }
-                                Err(e) => {
-                                    report_err(&mut server_connection, &e[..]);
-
-                                    return Err(e);
-                                }
-                            },
-                            None => return Err("Invalid message format!".to_string()),
-                        }
-
-                        let http_response =
-                            format!("HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}\r\n", {
-                                rc_server.lock().expect("Error obtaining lock.").pretty_print()
-                            });
-
-                        println!("{}", http_response);
-
-                        server_connection
-                            .writer()
-                            .write_all(http_response.as_bytes())
-                            .unwrap();
-                        server_connection.send_close_notify()
+                                server_connection
+                                    .writer()
+                                    .write_all(response.as_bytes())
+                                    .unwrap();
+                                server_connection.send_close_notify()
+                            }
+                        };
                     }
                 }
             }
@@ -164,6 +145,32 @@ fn handle_connection<'a>(
             }
         }
     }
+}
+
+pub fn handle_request(rc_server: Arc<Mutex<IRCServer>>, buf: &[u8]) -> Result<String, String> {
+    let request = String::from_utf8_lossy(&buf);
+
+    match request.split("\r\n").collect::<Vec<&str>>().first() {
+        Some(nickname) => match User::new(nickname) {
+            Ok(created_user) => {
+                let mut server = rc_server.lock().expect("Error obtaining lock.");
+
+                server.add_user(created_user)
+            }
+            Err(e) => return Err(e),
+        },
+        None => return Err("Invalid message format!".to_string()),
+    }
+
+    Ok(format!(
+        "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}\r\n",
+        {
+            rc_server
+                .lock()
+                .expect("Error obtaining lock.")
+                .pretty_print()
+        }
+    ))
 }
 
 // from: https://github.com/rustls/rustls/blob/main/rustls-mio/examples/tlsserver.rs

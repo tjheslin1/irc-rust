@@ -1,21 +1,21 @@
 use crate::user::User;
 
 #[derive(Debug)]
-pub struct Server {
+pub struct IRCServer {
     name: String,
     users: Vec<User>,
     // clients: Map<ClientIdentifier, Server>,
 }
 
-impl Server {
-    pub fn new(name: &str) -> Result<Server, String> {
+impl IRCServer {
+    pub fn new(name: &str) -> Result<IRCServer, String> {
         match name {
             server_name if server_name.len() > 63 => Err(format!(
                 "Error creating Server. Name needs to be 63 characters or fewer, \
                         got: \"{}\".",
                 server_name
             )),
-            server_name => Ok(Server {
+            server_name => Ok(IRCServer {
                 name: server_name.to_string(),
                 users: vec![],
             }),
