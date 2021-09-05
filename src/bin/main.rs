@@ -4,7 +4,7 @@ use std::fs;
 use std::io;
 use std::io::{BufReader, Read, Write};
 use std::net;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use irc_rust::server::Server;
 use irc_rust::threadpool::ThreadPool;
@@ -46,8 +46,9 @@ fn main() {
     let tcp_listener = net::TcpListener::bind("192.168.0.110:8084").unwrap(); // 6667
     let thread_pool = ThreadPool::new(20).unwrap();
 
-    let rc_server =
-        Arc::new(Server::new("thomas-LabTop").expect("Error occurred creating Server!:"));
+    let rc_server = Arc::new(Mutex::new(
+        Server::new("thomas-LabTop").expect("Error occurred creating Server!:"),
+    ));
 
     tcp_listener.incoming().for_each(|stream| match stream {
         Ok(tcp_stream) => {
@@ -60,23 +61,21 @@ fn main() {
     })
 }
 
-fn handle_connection(
-    mut server: Arc<Server>,
+fn handle_connection<'a>(
+    rc_server: Arc<Mutex<Server>>,
     rc_tls_config: Arc<rustls::ServerConfig>,
     mut tcp_stream: net::TcpStream,
-) -> Result<(), &'static str> {
+) -> Result<(), String> {
     // TODO: does this need to be static?
     println!("Connection started!");
 
     let mut server_connection = rustls::ServerConnection::new(rc_tls_config).unwrap();
 
-    fn report_err(mut server_conn: &rustls::ServerConnection, message: &str) {
+    fn report_err(server_conn: &mut rustls::ServerConnection, message: &str) {
         server_conn.writer().write_all(message.as_bytes()).unwrap();
         server_conn.send_close_notify()
     }
 
-    // replace with: ?
-    // server_connection.complete_io(io)
     loop {
         if server_connection.wants_read() {
             match server_connection.read_tls(&mut tcp_stream) {
@@ -89,7 +88,7 @@ fn handle_connection(
                         ()
                     }
 
-                    return Err(&format!("Error on read! {:?}", e)[..]);
+                    return Err(format!("Error on read! {:?}", e));
                 }
                 Ok(0) => {
                     println!("EOF ?");
@@ -107,7 +106,7 @@ fn handle_connection(
                     println!("Cannot process packet!: {:?}", e);
 
                     if let Err(write_err) = server_connection.write_tls(&mut tcp_stream) {
-                        return Err(&format!("write failed {:?}", write_err)[..]);
+                        return Err(format!("write failed {:?}", write_err));
                     }
                 }
                 Ok(io) => {
@@ -126,20 +125,25 @@ fn handle_connection(
 
                         match request.split("\r\n").collect::<Vec<&str>>().first() {
                             Some(nickname) => match User::new(nickname) {
-                                Ok(created_user) => server.add_user(created_user),
-                                Err(e) => {
-                                    report_err(&server_connection, &e[..]);
+                                Ok(created_user) => {
+                                    let mut server =
+                                        rc_server.lock().expect("Error obtaining lock.");
 
-                                    return Err(&e[..]);
+                                    server.add_user(created_user)
+                                }
+                                Err(e) => {
+                                    report_err(&mut server_connection, &e[..]);
+
+                                    return Err(e);
                                 }
                             },
-                            None => return Err("Invalid message format!"),
+                            None => return Err("Invalid message format!".to_string()),
                         }
 
-                        let http_response = format!(
-                            "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}\r\n",
-                            server.pretty_print()
-                        );
+                        let http_response =
+                            format!("HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}\r\n", {
+                                rc_server.lock().expect("Error obtaining lock.").pretty_print()
+                            });
 
                         println!("{}", http_response);
 
@@ -154,9 +158,9 @@ fn handle_connection(
         }
 
         if server_connection.wants_write() {
-            if let Err(write_err) = server_connection.write_tls(&mut tcp_stream) {
-                println!("write failed {:?}", write_err);
-                return Err(write_err);
+            match server_connection.write_tls(&mut tcp_stream) {
+                Ok(_) => (),
+                Err(e) => return Err(format!("write failed {:?}", e)),
             }
         }
     }
