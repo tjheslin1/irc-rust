@@ -23,7 +23,7 @@ use crate::user::User;
 
 const CLI_ERROR: &str = "Expected two (2) arguments for certs path and private key path";
 
-pub fn start() {
+pub fn start(address: &str) {
     let (certs, private_key) = match env::args().collect::<Vec<String>>().as_slice() {
         [_, certs_path, private_key_path] => {
             println!("{}\n{}", certs_path, private_key_path);
@@ -44,7 +44,7 @@ pub fn start() {
             .expect("bad certificate/key"),
     );
 
-    let tcp_listener = net::TcpListener::bind("192.168.0.110:8084").unwrap(); // 6667
+    let tcp_listener = net::TcpListener::bind(address).unwrap(); // 6667
     let thread_pool = ThreadPool::new(20).unwrap();
 
     let rc_server = Arc::new(Mutex::new(
@@ -162,6 +162,9 @@ pub fn handle_request(rc_server: Arc<Mutex<IRCServer>>, buf: &[u8]) -> Result<St
         },
         None => return Err("Invalid message format!".to_string()),
     }
+
+    // echo
+    // Ok(request.to_string())
 
     Ok(format!(
         "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}\r\n",
