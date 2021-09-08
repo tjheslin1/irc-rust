@@ -17,6 +17,7 @@ fn test_server_handle_empty_request() {
 }
 
 #[test]
+#[ignore]
 fn test_server_handle_empty_get_request() {
     let buf = b"GET / HTTP/1.1
 Host: ircrust.com:8084
@@ -52,6 +53,7 @@ Cache-Control: max-age=0
 }
 
 #[test]
+#[ignore]
 fn test_server_handle_post_request() {
     let buf = b"POST / HTTP/1.1
 Host: ircrust.com:8084
