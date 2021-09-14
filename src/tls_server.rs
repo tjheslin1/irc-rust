@@ -19,7 +19,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::irc_server::IRCServer;
 use crate::threadpool::ThreadPool;
-use crate::user::User;
 
 const CLI_ERROR: &str = "Expected two (2) arguments for certs path and private key path";
 
@@ -44,7 +43,7 @@ pub fn start(address: &str) {
             .expect("bad certificate/key"),
     );
 
-    let tcp_listener = net::TcpListener::bind(address).unwrap(); // 6667
+    let tcp_listener = net::TcpListener::bind(address).unwrap();
     let thread_pool = ThreadPool::new(20).unwrap();
 
     let rc_server = Arc::new(Mutex::new(
@@ -149,19 +148,9 @@ fn handle_connection<'a>(
 }
 
 pub fn handle_request(rc_server: Arc<Mutex<IRCServer>>, buf: &[u8]) -> Result<String, String> {
-    let request = String::from_utf8_lossy(&buf);
+    let request = String::from_utf8_lossy(&buf).to_string();
 
-    match request.split("\r\n").collect::<Vec<&str>>().first() {
-        Some(nickname) => match User::new(nickname) {
-            Ok(created_user) => {
-                let mut server = rc_server.lock().expect("Error obtaining lock.");
-
-                server.add_user(created_user)
-            }
-            Err(e) => return Err(e),
-        },
-        None => return Err("Invalid message format!".to_string()),
-    }
+    IRCServer::handle_input(Arc::clone(&rc_server), request)?;
 
     // echo
     // Ok(request.to_string())
